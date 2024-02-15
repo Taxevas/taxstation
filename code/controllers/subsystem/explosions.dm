@@ -466,6 +466,120 @@ SUBSYSTEM_DEF(explosions)
 
 	SEND_GLOBAL_SIGNAL(COMSIG_GLOB_EXPLOSION, epicenter, devastation_range, heavy_impact_range, light_impact_range, took, orig_dev_range, orig_heavy_range, orig_light_range, explosion_cause, explosion_index)
 
+var/debugturfs = FALSE
+
+/// and so i am become death, destroyer of worlds
+// note: there are a LOT of useless comments here, that will be cleared up as this PR progresses. They are there to state my thought process as im making the code without referring to the HackMD. Small resolutions BEWARE.
+// the goal is to replace propogate_blastwave() with this, but at the moment I have it split into it's own function fireable from the "boooomers" verb in the admin panel.
+// i'll replace propogate_blastwave() when I get all the arguments in
+/datum/controller/subsystem/explosions/proc/automata_booom(atom/epicenter, power, devastation_range, heavy_impact_range, light_impact_range, flame_range = 1)
+	var/originalpower = power
+	var/started_at = REALTIMEOFDAY
+	var/i = 0
+	epicenter = get_turf(epicenter)
+
+	// turfs that are currently exploding,
+	var/list/activeturfs = list(epicenter)
+	// turfs that will explode after activeturfs, basically adjacent turfs to activeturfs
+	var/list/nextturfs = list()
+	// turfs that have exploded and will not be reiterated
+	var/list/closedturfs = list()
+
+	// keep iterating the explosion for as long as we have turfs to explode and power to expend
+	while (power > 0 && length(activeturfs) > 0)
+		i += 1
+
+		// the percentage of power spent
+		var/propogationpercent = i / originalpower
+
+		message_admins("[power] iteration started")
+
+		// iterate through our active turfs, explode their neighbors and throw them into nextturfs
+		for (var/turf/open/iturf as anything in activeturfs)
+			if (debugturfs)
+				iturf.color = "blue"
+				iturf.maptext = MAPTEXT("[power]")
+
+			// i couldn't find a function to reliably get just the 4 turfs that share sides with the current turf like i wanted to, and rather then writing my own ill wait for someone to show me it exists
+			// this function is a problem because despite the turf being blocked off from the iturf, i.e walls on all sides, it will still register the corners and the explosion will propogate through them
+			// also, a square shape to the explosion is overpowered and unrealistic, exploding far more space then it should. a diamond shape doesn't look good either, but it's not overpowered and just generally better
+			// TODO: i WOULD like to, in a perfect world, propogate the explosion in a circle, but that's a task for future me to figure out how to do that. will probably need a new WAIT list to halt processing on certain tiles until later on.
+			var/list/adjturfs = TURF_NEIGHBORS(iturf)
+
+			// turn this active turf into a hotspot if valid, this trails 1 tile behind the blast wave (for pretty)
+			// devestation and heavy tiles always turn into hotspots, regardless of flame_range
+			// HOTSPOTS ARE FUCKING STUPID. TODO: Cook up my own fire effects, that aren't based on LINDA and have significantly more customizability.
+			if ((power >= originalpower - heavy_impact_range) || (power >= (originalpower - light_impact_range) * flame_range) && prob(60))
+				var/obj/effect/hotspot/hotspot = new /obj/effect/hotspot(iturf)
+
+			// this section gets the next turfs, aka. turfs that haven't been processed and are adjacent to active turfs. these turfs will explode and then become active once we're done processing our current actives
+			for (var/turf/adjiturf as anything in adjturfs)
+				// sometimes we'll just skip turfs if the propogationpercent is high enough, to sprinkle in some randomness to the final stretch of the explosion.
+				// these turfs are not closed and can be reiterated by another turf at any time, so turfs that SHOULD explode should still explode. No getting out of the epicenter of an explosion.
+				if (propogationpercent > 0.2 && prob(40))
+					continue
+
+				//make sure we're not reiterating over any turfs we've already processed or added to nextturf (fuck this is kinda slow)
+				// note: or is it? despite running explosions that kill the entire station, no slowdowns were experienced with propagation sleeping
+				if (!(closedturfs.Find(adjiturf)) && !(nextturfs.Find(adjiturf)) && !(activeturfs.Find(adjiturf)))
+					// figure out how powerful this is gonna be
+					var/severity = EXPLODE_LIGHT
+					if (power >= originalpower - devastation_range)
+						severity = EXPLODE_DEVASTATE
+					else if(power >= originalpower - heavy_impact_range)
+						severity = EXPLODE_HEAVY
+
+					// do the damage
+					if ((istype(adjiturf, /turf/open) && TURF_SHARES(adjiturf)))
+						// free to flow into this turf, add to nextturf.
+						nextturfs.Add(adjiturf)
+						if (debugturfs)
+							adjiturf.color = "red"
+
+						// splode
+						EX_ACT(adjiturf, severity)
+					else
+						// is closed?
+						var/closed = istype(adjiturf, /turf/closed)
+
+						// gotta break something to flow here, splode
+						EX_ACT(adjiturf, severity)
+
+						// recheck if we can enter this turf, add it to next if it's opened up due to damage
+						// windows will always trigger this. (HOW THE FUCK DO I TELL IF A TURF IS BLOCKED, TURF_SHARES doesn't register fast enough and always returns false regardless if whatever is on it broke or not)
+						// this is a basic workaround that just checks if the turf was closed and became not closed, doesn't work with windows and windows will always just get closed
+						// TODO: make this not shit
+						if (closed && istype(adjiturf, /turf/open))
+							nextturfs.Add(adjiturf)
+
+							if (debugturfs)
+								adjiturf.color = "red"
+						else
+							// failed to break, don't retry, close the tile
+							closedturfs.Add(adjiturf)
+
+							if (debugturfs)
+								adjiturf.color = "green"
+
+
+		// close all the turfs we just processed and open the nextturfs
+		closedturfs.Insert(0, activeturfs)
+		activeturfs = nextturfs
+		nextturfs = list()
+		message_admins("closed active turfs")
+
+		// done for this iteration, expend our power
+		power -= 1
+
+		// devestation and heavy is processed instantly, light impact visually propagates for that impending doom
+		// todo: calculate the sleep() time rather then hardcoding it, and make heavy follow it
+		if (i > heavy_impact_range)
+			sleep(0.6)
+
+	// we're done here
+	message_admins("took [(REALTIMEOFDAY - started_at) / 10]")
+
+
 // Explosion SFX defines...
 /// The probability that a quaking explosion will make the station creak per unit. Maths!
 #define QUAKE_CREAK_PROB 30

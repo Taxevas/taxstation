@@ -21,6 +21,7 @@ GLOBAL_PROTECT(admin_verbs_default)
 	/client/proc/secrets,
 	/client/proc/stop_sounds,
 	/client/proc/tag_datum_mapview,
+	/client/proc/boombers,
 	)
 GLOBAL_LIST_INIT(admin_verbs_admin, world.AVerbsAdmin())
 GLOBAL_PROTECT(admin_verbs_admin)
@@ -318,9 +319,6 @@ GLOBAL_PROTECT(admin_verbs_poll)
 	to_chat(src, span_interface("All of your adminverbs are now visible."), confidential = TRUE)
 	BLACKBOX_LOG_ADMIN_VERB("Show Adminverbs")
 
-
-
-
 /client/proc/admin_ghost()
 	set category = "Admin.Game"
 	set name = "Aghost"
@@ -371,6 +369,37 @@ GLOBAL_PROTECT(admin_verbs_poll)
 	mob.remove_from_all_data_huds()
 	mob.SetInvisibility(INVISIBILITY_OBSERVER, INVISIBILITY_SOURCE_INVISIMIN, INVISIBILITY_PRIORITY_ADMIN)
 	to_chat(mob, span_adminnotice(span_bold("Invisimin on. You are now as invisible as a ghost.")), confidential = TRUE)
+
+/client/proc/boombers()
+	set category = "Admin"
+	set name = "boooomers"
+
+	if(!check_rights(R_ADMIN))
+		return
+
+	var/power = input("POWERR??", "Input")  as num|null
+	if(power == null)
+		return
+
+	var/heavy = input("heavy?? less then [power]", "Input")  as num|null
+	if(heavy == null)
+		return
+
+	var/devestation = input("devestation?? less then [power]", "Input")  as num|null
+	if(devestation == null)
+		return
+
+	var/light = input("light?? less then [power]", "Input")  as num|null
+	if(light == null)
+		return
+
+	var/wait = input("wait time??", "Input")  as num|null
+	if(wait == null)
+		return
+
+	sleep(wait * 10)
+
+	SSexplosions.automata_booom(mob, power, devestation, heavy, light)
 
 /client/proc/check_antagonists()
 	set name = "Check Antagonists"
