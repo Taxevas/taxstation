@@ -472,6 +472,9 @@ var/debugturfs = FALSE
 // note: there are a LOT of useless comments here, that will be cleared up as this PR progresses. They are there to state my thought process as im making the code without referring to the HackMD. Small resolutions BEWARE.
 // the goal is to replace propogate_blastwave() with this, but at the moment I have it split into it's own function fireable from the "boooomers" verb in the admin panel.
 // i'll replace propogate_blastwave() when I get all the arguments in
+
+// TODO: this function is incredibly bloated, need to split up stuff like propagation calcs into their own functions, and drop the indentation count
+// we fucking love prototypes, this shit is fucking awful
 /datum/controller/subsystem/explosions/proc/automata_booom(atom/epicenter, power, devastation_range, heavy_impact_range, light_impact_range, flame_range = 1)
 	var/originalpower = power
 	var/started_at = REALTIMEOFDAY
